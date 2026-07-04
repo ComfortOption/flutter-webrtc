@@ -151,6 +151,9 @@ class MethodResultProxy {
  public:
   static std::unique_ptr<MethodResultProxy> Create(
       std::unique_ptr<MethodResult> method_result);
+  static std::unique_ptr<MethodResultProxy> Create(
+      std::unique_ptr<MethodResult> method_result,
+      TaskRunner* task_runner);
 
   virtual ~MethodResultProxy() = default;
 

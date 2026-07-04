@@ -3,6 +3,8 @@
 
 #include "flutter_webrtc/flutter_web_r_t_c_plugin.h"
 
+#include <thread>
+
 namespace flutter_webrtc_plugin {
 
 static EventChannelProxy* eventChannelProxy = nullptr;
@@ -52,7 +54,13 @@ void FlutterWebRTC::HandleMethodCall(
     const EncodableMap params =
         GetValue<EncodableMap>(*method_call.arguments());
     const EncodableMap constraints = findMap(params, "constraints");
+#if defined(__linux__)
+    std::thread([this, constraints, result = std::move(result)]() mutable {
+      GetUserMedia(constraints, std::move(result));
+    }).detach();
+#else
     GetUserMedia(constraints, std::move(result));
+#endif
   } else if (method_call.method_name().compare("getDisplayMedia") == 0) {
     if (!method_call.arguments()) {
       result->Error("Bad Arguments", "Null constraints arguments received");

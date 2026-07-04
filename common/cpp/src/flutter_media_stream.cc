@@ -2,6 +2,9 @@
 
 #include "flutter_utf8_sanitize.h"
 
+#include <chrono>
+#include <iostream>
+
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
 #define DEFAULT_FPS 30
@@ -9,6 +12,16 @@
 namespace flutter_webrtc_plugin {
 
 namespace {
+
+using SteadyClock = std::chrono::steady_clock;
+
+void LogMediaTiming(const std::string& label,
+                    SteadyClock::time_point start) {
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      SteadyClock::now() - start);
+  std::cout << "[FlutterWebRTC][getUserMedia] " << label << " +"
+            << elapsed.count() << "ms" << std::endl;
+}
 
 std::string SanitizeDeviceIdFromAudioBuffers(const char* name, const char* guid) {
   const std::string raw = (guid != nullptr && strlen(guid) > 0)
@@ -41,6 +54,9 @@ FlutterMediaStream::FlutterMediaStream(FlutterWebRTCBase* base) : base_(base) {
 void FlutterMediaStream::GetUserMedia(
     const EncodableMap& constraints,
     std::unique_ptr<MethodResultProxy> result) {
+  const auto get_user_media_start = SteadyClock::now();
+  LogMediaTiming("getUserMedia start", get_user_media_start);
+
   std::string uuid = base_->GenerateUUID();
   scoped_refptr<RTCMediaStream> stream =
       base_->factory_->CreateStream(uuid.c_str());
@@ -53,10 +69,18 @@ void FlutterMediaStream::GetUserMedia(
     EncodableValue audio = it->second;
     if (TypeIs<bool>(audio)) {
       if (true == GetValue<bool>(audio)) {
+        const auto audio_start = SteadyClock::now();
+        LogMediaTiming("audio start", get_user_media_start);
         GetUserAudio(constraints, stream, params);
+        LogMediaTiming("audio end", audio_start);
+      } else {
+        params[EncodableValue("audioTracks")] = EncodableValue(EncodableList());
       }
     } else if (TypeIs<EncodableMap>(audio)) {
+      const auto audio_start = SteadyClock::now();
+      LogMediaTiming("audio start", get_user_media_start);
       GetUserAudio(constraints, stream, params);
+      LogMediaTiming("audio end", audio_start);
     } else {
       params[EncodableValue("audioTracks")] = EncodableValue(EncodableList());
     }
@@ -70,14 +94,21 @@ void FlutterMediaStream::GetUserMedia(
     EncodableValue video = it->second;
     if (TypeIs<bool>(video)) {
       if (true == GetValue<bool>(video)) {
+        const auto video_start = SteadyClock::now();
+        LogMediaTiming("video start", get_user_media_start);
         GetUserVideo(constraints, stream, params);
+        LogMediaTiming("video end", video_start);
       }
     } else if (TypeIs<EncodableMap>(video)) {
+      const auto video_start = SteadyClock::now();
+      LogMediaTiming("video start", get_user_media_start);
       GetUserVideo(constraints, stream, params);
+      LogMediaTiming("video end", video_start);
     }
   }
 
   base_->local_streams_[uuid] = stream;
+  LogMediaTiming("getUserMedia success", get_user_media_start);
   result->Success(EncodableValue(params));
 }
 
@@ -378,8 +409,11 @@ void FlutterMediaStream::GetUserVideo(const EncodableMap& constraints,
     if (sourceId != "" &&
         sourceId ==
             SanitizeDeviceIdFromVideoBuffers(strNameUTF8, strGuidUTF8)) {
+      const auto create_start = SteadyClock::now();
+      LogMediaTiming("video device create start", create_start);
       video_capturer =
           base_->video_device_->Create(strNameUTF8, i, width, height, fps);
+      LogMediaTiming("video device create end", create_start);
       break;
     }
   }
@@ -390,14 +424,20 @@ void FlutterMediaStream::GetUserVideo(const EncodableMap& constraints,
   if (!video_capturer.get()) {
     base_->video_device_->GetDeviceName(0, strNameUTF8, 128, strGuidUTF8, 128);
     sourceId = SanitizeDeviceIdFromVideoBuffers(strNameUTF8, strGuidUTF8);
+    const auto create_start = SteadyClock::now();
+    LogMediaTiming("video device create start", create_start);
     video_capturer =
         base_->video_device_->Create(strNameUTF8, 0, width, height, fps);
+    LogMediaTiming("video device create end", create_start);
   }
 
   if (!video_capturer.get())
     return;
 
+  const auto capture_start = SteadyClock::now();
+  LogMediaTiming("StartCapture start", capture_start);
   video_capturer->StartCapture();
+  LogMediaTiming("StartCapture end", capture_start);
 
   const char* video_source_label = "video_input";
   scoped_refptr<RTCVideoSource> source = base_->factory_->CreateVideoSource(
